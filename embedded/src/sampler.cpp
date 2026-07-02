@@ -1,3 +1,5 @@
+#include <hardware/timer.h>
+#include <iostream>
 #include "sampler.hpp"
 #include "config.hpp"
 #include <cstdint>
@@ -9,7 +11,8 @@
 
 void Sampler::init(const logic_an_input inpt){
     inpt_for_sampling = inpt;
-    tact_time = 1'000'00 / inpt_for_sampling.hz;
+    tact_time = 1'000'000 / inpt_for_sampling.hz;
+    std::cout << tact_time << '\n';
     gpio_init(inpt_for_sampling.channel);
     gpio_set_dir(inpt_for_sampling.channel, GPIO_IN);
 }
@@ -23,17 +26,13 @@ void Sampler::init(const logic_an_input inpt){
 }
 
 void Sampler::start_sampling(){
-    if (tact_time <= 1) {
-        return;
-    }
+    auto next = get_absolute_time();
+    const auto start_time = next;
     for(uint32_t i{}; i < inpt_for_sampling.samples; i++){
-        auto time_than = get_absolute_time();
-        while (true) {
-            if (absolute_time_diff_us(time_than, get_absolute_time()) >= tact_time) {
-                samples_[i] = gpio_get(inpt_for_sampling.channel);
-                break;
-            }
-            tight_loop_contents();
-        }
+        next = delayed_by_us(next, tact_time);
+        busy_wait_until(next);
+        samples_[i] = gpio_get(inpt_for_sampling.channel);
     }
+    still_measuring = false;
+    
 }

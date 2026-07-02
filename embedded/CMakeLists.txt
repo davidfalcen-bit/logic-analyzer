@@ -18,6 +18,7 @@ pico_enable_stdio_uart(logic_analyzer 0)
 
 target_link_libraries(logic_analyzer  
                             pico_stdlib 
+                            hardware_pwm
                             )
 
 pico_add_extra_outputs(logic_analyzer)
