@@ -1,0 +1,64 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "e",
+      "displayName": "Embedded Debug",
+      "binaryDir": "${sourceDir}/build-embedded",
+      "cacheVariables": {
+        "LOGIC_ANALYZER_TARGET": "embedded",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "er",
+      "displayName": "Embedded Release",
+      "binaryDir": "${sourceDir}/build-embedded",
+      "cacheVariables": {
+        "LOGIC_ANALYZER_TARGET": "embedded",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "h",
+      "displayName": "Host Debug",
+      "binaryDir": "${sourceDir}/build-host",
+      "cacheVariables": {
+        "LOGIC_ANALYZER_TARGET": "host",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "hr",
+      "displayName": "Host Release",
+      "binaryDir": "${sourceDir}/build-host",
+      "cacheVariables": {
+        "LOGIC_ANALYZER_TARGET": "host",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "e",
+      "configurePreset": "e"
+    },
+    {
+      "name": "er",
+      "configurePreset": "er"
+    },
+    {
+      "name": "h",
+      "configurePreset": "h"
+    },
+    {
+      "name": "hr",
+      "configurePreset": "hr"
+    }
+  ]
+}

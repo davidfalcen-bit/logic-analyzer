@@ -1,3 +1,5 @@
 .zed/
 build/
+build-host/
+build-embedded/
 .cache/
