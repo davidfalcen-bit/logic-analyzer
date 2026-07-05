@@ -16,7 +16,6 @@
 #include "sampler.hpp"
 Sampler smp;
 
-
 int main() {
     stdio_init_all();
     sleep_ms(2000);
@@ -27,26 +26,25 @@ int main() {
     auto slice = pwm_gpio_to_slice_num(15);
     auto config = pwm_get_default_config();
     auto sys_clck = clock_get_hz(clk_sys);
-    auto wrap_val = (sys_clck / 100000) -1;
-    auto level_val = (wrap_val+1)/2;
+    auto wrap_val = (sys_clck / 100000) - 1;
+    auto level_val = (wrap_val + 1) / 2;
     pwm_config_set_wrap(&config, wrap_val);
     gpio_set_function(15, GPIO_FUNC_PWM);
     pwm_init(slice, &config, true);
     pwm_set_gpio_level(15, level_val);
 
-    
     auto result = parse_cin();
     std::cout << +result.channel << '\n' << result.hz << '\n' << result.samples << '\n';
 
     smp.init(result);
     smp.start_sampling();
     auto x = smp.samples();
-    if(!x){
+    if (!x) {
         std::cout << "We sucked";
         abort();
     }
-    for(std::uint32_t i{}; i < x.value().size(); i++){
-        std::cout << i+1 << ':' << +x.value()[i] << '\n';
+    for (std::uint32_t i{}; i < x.value().size(); i++) {
+        std::cout << i + 1 << ':' << +x.value()[i] << '\n';
     }
     std::cout << std::flush;
     sleep_ms(200);
