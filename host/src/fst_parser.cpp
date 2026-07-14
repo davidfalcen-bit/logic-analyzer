@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <iostream>
 #include <cmath>
 #include "fst_parser.hpp"
@@ -7,28 +8,31 @@
 #include <span>
 #include <string>
 #include <chrono>
-extern "C"{
-    #include "fstapi.h"
+#include <sys/types.h>
+extern "C" {
+#include "fstapi.h"
 }
 
-void fst_parse(std::span<const uint8_t> to_parse, const logic_an_input &config, const std::string& name_of_file) {
-    std::ofstream file{name_of_file.c_str()};
-    file<<"$date\n\t";
-    auto time_utc = std::chrono::system_clock::now();
-    auto time_local = std::chrono::zoned_time{std::chrono::current_zone(), time_utc};
-    std::string formatted_time = std::format("{:%Y-%m-%d %H:%M:%S}", time_local);
-    file << formatted_time << "\n" << "$end\n" << "$timescale\n\t";
-
-    long double clk_div = double(125'000'000) / double(config.hz);
-    auto int_part = static_cast<int16_t>(clk_div);
-    auto pico_div = std::round((clk_div - int_part)*256.00);
-    if (pico_div == 256) {
-        int_part += 1;
-        pico_div = 0;
+void fst_parse(std::span<const uint8_t> to_parse, const logic_an_input &config, const std::string &name_of_file) {
+    auto *fst_object = fstWriterCreate(name_of_file.c_str(), 1);
+    fstWriterSetTimescale(fst_object, -15);
+    fstWriterSetScope(fst_object, FST_ST_VCD_MODULE, "GPIO", nullptr);
+    auto id = fstWriterCreateVar(fst_object, FST_VT_VCD_WIRE, FST_VD_INPUT, 1,
+                                 std::string("gpio" + std::to_string(config.channel)).c_str(), 0);
+    uint64_t current_time_fs = 0;
+    fstWriterSetUpscope(fst_object);
+    fstWriterEmitTimeChange(fst_object, 0);
+    uint8_t status_of_bit{255};
+    for (auto v : to_parse) {
+        if (v != status_of_bit) {
+            fstWriterEmitTimeChange(fst_object, current_time_fs);
+            if (v == 0)
+                fstWriterEmitValueChange(fst_object, id, "0");
+            else
+                fstWriterEmitValueChange(fst_object, id, "1");
+            status_of_bit = v;
+        }
+        current_time_fs += step_fs;
     }
-    
-    long double f_real = double(125'000'000) / (int_part+(pico_div/(double)256));
-
-    uint64_t femto_secs = (static_cast<uint64_t>(int_part) * 8'000'000ULL) + 
-                          (static_cast<uint64_t>(pico_div) * 31'250ULL);
+    fstWriterClose(fst_object);
 }

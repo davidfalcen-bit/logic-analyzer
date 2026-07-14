@@ -21,7 +21,6 @@
 #include "pico_connect.hpp"
 #include "fst_parser.hpp"
 
-
 static ftxui::InputOption make_input_options() {
     ftxui::InputOption options;
     options.multiline = false;
@@ -44,11 +43,11 @@ int main() {
     std::jthread capture_thread;
     int selected_input = 0;
     std::locale::global(std::locale("en_US.UTF-8"));
-    logic_an_input inpt{.msg = 6, .channel = 3, .hz = 1'000'000, .samples = 10000};
-    std::string channel_placeholder;
-    std::string frequency_placeholder;
-    std::string samples_placeholder;
-    std::string output{"capture.fst"};
+    logic_an_input inpt{.msg = 6, .amm = 0, .channel = 15, .samples = 10000, .hz = 1'000'000};
+    std::string channel_placeholder{};
+    std::string frequency_placeholder{};
+    std::string samples_placeholder{};
+    std::string output{};
     std::string_view error_message{};
 
     auto channel_opt = make_input_options();
@@ -96,7 +95,7 @@ int main() {
             still_capturing = false;
             auto result_of_parsing = rpl.getter();
             if (result_of_parsing)
-                // fst_parse(result_of_parsing.value());
+                fst_parse(result_of_parsing.value(), inpt, output);
             return true;
         }
         if (ev == ftxui::Event::Special("Capture unsuccess")) {

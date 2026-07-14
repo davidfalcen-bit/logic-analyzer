@@ -2,8 +2,16 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <hardware/structs/pio.h>
 #include <optional>
 #include <span>
+#include <utility>
+
+struct pio_t {
+    pio_hw_t *pio;
+    uint8_t sm;
+    int offset;
+};
 
 class Sampler {
   public:
@@ -14,8 +22,9 @@ class Sampler {
 
   private:
     bool still_measuring{true};
-    static constexpr std::uint32_t max_samples = 100000;
-    logic_an_input inpt_for_sampling;
-    int64_t tact_time;
+    static constexpr std::uint32_t max_samples = 250'000;
+    logic_an_input inpt_for_sampling{};
+    uint8_t ammount_of_channels{};
     std::array<uint8_t, max_samples> samples_{};
+    bool slow_mode{};
 };

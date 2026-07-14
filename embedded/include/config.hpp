@@ -1,16 +1,16 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <format>
-#include <type_traits>
-#include <cstddef>
 
 struct alignas(4) logic_an_input {
-    uint8_t msg;
+    uint16_t msg;
+    uint8_t amm;
     uint8_t channel;
-    uint32_t hz;
     uint32_t samples;
+    uint32_t hz;
 };
 
 inline std::string from_hz_to_string(unsigned int hz) {

@@ -1,6 +1,7 @@
 #include "hardware/clocks.h"
 #include "hardware/pwm.h"
 #include "pico/stdlib.h"
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include <pico/stdio.h>
 #include <pico/stdio_usb.h>
 #include <pico/time.h>
+#include <span>
 #include <unistd.h>
 #include "config.hpp"
 #include "sampler.hpp"
@@ -23,6 +25,8 @@
 Sampler smp;
 
 int main() {
+
+    set_sys_clock_hz(200'000'000, true);
     stdio_init_all();
     sleep_ms(500);
     while (!stdio_usb_connected()) {
@@ -43,6 +47,7 @@ int main() {
     for (;;) {
         logic_an_input result{};
         while (true) {
+            smp.init(result); 
             int fsymbol = getchar_timeout_us(0);
             if (fsymbol == PICO_ERROR_TIMEOUT) {
                 tight_loop_contents();
@@ -62,8 +67,7 @@ int main() {
                         break;
                     }
                 }
-                if (result.channel < 29 && result.samples < 100'001 && result.hz < 1'000'001 && result.msg == 6) {
-
+                if (result.samples < 200'001 && result.hz < 100'000'001 && result.msg == 6 && result.amm < 7) {
                     putchar(ping::READY_CONFIG);
                     fflush(stdout);
                     break;
@@ -71,11 +75,10 @@ int main() {
                 std::memset(&result, 0, sizeof(logic_an_input));
             }
         }
-
-        smp.init(result);
+        sleep_ms(2);
         smp.start_sampling();
         auto x = smp.samples();
-
+        
         while (true) {
             int fsymbol = getchar_timeout_us(0);
             if (fsymbol == ping::PING_SAMPLING) {
