@@ -2,40 +2,28 @@
 
 # 🔬 RP2040 Logic Analyzer
 
-**A PIO + DMA logic analyzer for the Raspberry Pi Pico that captures digital
-signals up to 100 MHz and exports them to GTKWave.**
+**A PIO + DMA logic analyzer for the Raspberry Pi Pico that samples digital
+signals up to 200 MHz and exports them to GTKWave.**
 
 [![Platform](https://img.shields.io/badge/platform-RP2040-blueviolet)](https://www.raspberrypi.com/products/rp2040/)
 [![Language](https://img.shields.io/badge/language-C%2B%2B-00599C)](https://isocpp.org/)
-[![SDK](https://img.shields.io/badge/Pico%20SDK-2.1%2B-green)](https://github.com/raspberrypi/pico-sdk)
+[![SDK](https://img.shields.io/badge/Pico%20SDK-2.2%2B-green)](https://github.com/raspberrypi/pico-sdk)
 [![Output](https://img.shields.io/badge/output-FST%20%2F%20GTKWave-orange)](https://gtkwave.sourceforge.net/)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey)](#license)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](https://opensource.org/license/mit)
 
-</div>
-
-<!-- ─────────────────────────────────────────────────────────────
-     TODO: Replace with a hero screenshot / GIF of a capture in GTKWave.
-     A single clean waveform (e.g. 25 MHz square wave) reads best here.
-─────────────────────────────────────────────────────────────── -->
-
-<div align="center">
-
-<!-- ![Logic Analyzer capture in GTKWave](docs/images/hero.png) -->
-<!-- TODO: add hero.png -->
-`[ screenshot: capture.fst open in GTKWave — hero.png ]`
-
-</div>
-
+![Logic Analyzer capture in GTKWave](docs/hero.gif)
 ---
 
 ## ✨ Features
 
-- **Up to 100 MHz** signal capture (at 200 MHz sampling), 8 channels in parallel
+- **Up to 200 MHz** signal sampling), 8 channels in parallel
 - **Hardware-accelerated** — PIO does the sampling, DMA moves the data, the CPU stays free
-- **Zero-jitter** captures when sample rate is chosen correctly (see [Accuracy](#-accuracy))
+- **Zero-jitter** captures when the sample rate is chosen correctly (see [Accuracy](#-accuracy))
 - **Automatic PLL tuning** — picks the exact system clock needed for a requested rate
-- **FST export** — opens directly in GTKWave, the industry-standard waveform viewer
-- **Host ↔ device handshake** protocol over USB CDC
+- **Auto-detects the Pico** over USB (by vendor ID) with a retrying handshake protocol
+- **Host-side FST encoding** via `fstapi` — the Pico stays lean, the host builds the file
+- **Terminal UI** built with [FTXUI](https://github.com/ArthurSonzogni/FTXUI) — no GUI toolkit needed
+- **Opens directly in GTKWave**, the standard waveform viewer
 
 ---
 
@@ -47,9 +35,17 @@ that configures the capture and pulls the data back over USB.
 ### Prerequisites
 
 - Raspberry Pi Pico (RP2040)
-- [Pico SDK 2.1+](https://github.com/raspberrypi/pico-sdk) + CMake + ARM GCC toolchain
+- [CMake 3.25+](https://cmake.org/download/)
+- [Pico SDK 2.2.0+](https://github.com/raspberrypi/pico-sdk) 
+- [ARM GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) 13.2.Rel1+
+  (`arm-none-eabi-gcc`) — needs GCC 13's libstdc++ for `<format>`, since the shared
+  `config.hpp` header uses `std::format` on both the firmware and host side
+- A host compiler with C++20 `<format>` support — GCC 13+ (or Clang 17+ with libc++) —
+  the whole project builds as **C++20**
 - [`picotool`](https://github.com/raspberrypi/picotool) (optional — for flashing without BOOTSEL)
 - [GTKWave](https://gtkwave.sourceforge.net/) to view captures
+- Internet access on first host build — [FTXUI](https://github.com/ArthurSonzogni/FTXUI) (the TUI
+  library) is pulled automatically via CMake `FetchContent`, no manual install needed
 
 ### 1. Build & flash the firmware
 
@@ -63,7 +59,7 @@ make -j$(nproc) load           # builds + flashes via picotool
 > the Pico and copy the UF2 manually:
 > ```bash
 > make -j$(nproc)
-> cp embedded/logic_analyzer.uf2 /media/$USER/RPI-RP2/ # from inside build-embedded/
+> cp logic_analyzer.uf2 /media/$USER/RPI-RP2/
 > ```
 
 ### 2. Build the host tool
@@ -92,10 +88,7 @@ gtkwave capture.fst
 
 ## 🖥 Using the TUI
 
-<!-- ─────────────────────────────────────────────────────────────
-     TODO: replace with a screenshot of the running TUI.
-─────────────────────────────────────────────────────────────── -->
-`[ screenshot: the host TUI — tui.png ]`
+![ screenshot: the host TUI — tui.png ](docs/tui.png)
 
 The interface has four panels: **configuration**, **status**, **controls**, and
 **errors**.
@@ -108,8 +101,19 @@ The interface has four panels: **configuration**, **status**, **controls**, and
 | **Frequency**  | `1 Hz – 200 MHz`            | Sample rate — set to **signal_freq × 4** (see [Accuracy](#-accuracy)) |
 | **Samples**    | `1 – 200,000`               | Number of samples to capture                                   |
 
+> **Sample cap:** 200,000 samples is the ceiling, set by the Pico's RAM buffer —
+> Enough for tens of milliseconds of capture even
+> at 200 MHz.
+
 > **Channel format:** `15` captures a single pin (gpio15). `15+3` captures a range
 > — pin 15 plus 3 more (gpio15 → gpio18).
+
+> **Forbidden pins:** GPIO **23–25** are rejected (single channel or as part of a
+> `start+extra` range) — on most Pico boards these are wired to the onboard SMPS
+> mode / VBUS-sense / onboard LED, so sampling them isn't useful. If your board
+> doesn't use them for that, you can re-enable them by removing the two range
+> checks in `confirm_channel()` in `host/src/parser.cpp` (the ones erroring with
+> `"doesn't support 23-25 gpio pins"`).
 
 ### Keys
 
@@ -127,16 +131,53 @@ you can open it in GTKWave.
 
 ## 🧠 How It Works
 
+The work is split across **two sides**: the Pico *captures* raw samples, and the
+host *pulls them back and encodes* the FST file.
+
+### On the Pico (capture)
+
 ```
-Input pins ──▶ PIO ──▶ RX FIFO ──▶ DMA ──▶ RAM buffer ──▶ FST file ──▶ GTKWave
-             (sample)  (4-deep)   (move)   (store)        (encode)     (view)
+Input pins ──▶ PIO ──▶ RX FIFO ──▶ DMA ──▶ RAM buffer
+             (sample)  (4-deep)   (move)   (raw bytes)
 ```
 
 1. **PIO** snapshots the input pins at the sample rate. Each snapshot is one sample.
 2. **RX FIFO** is a tiny 4-word hardware queue the PIO pushes samples into.
 3. **DMA** drains the FIFO into a RAM buffer without touching the CPU.
-4. After capture, the samples are encoded into an **FST file**.
-5. **GTKWave** renders the waveforms.
+
+The Pico only ever holds **raw sample bytes** — it does no encoding.
+
+### Over USB (transfer)
+
+The host talks to the Pico over a USB serial link (`termios`, raw mode). It:
+
+1. **Auto-detects the Pico** by scanning `/dev/tty*` for a device whose USB vendor
+   ID is `2e8a` (Raspberry Pi), then confirms it with a **handshake** — sends
+   `0x05` (ping), expects `0x06` (pong).
+2. **Sends the capture config** (channels, rate, sample count) and waits for an
+   `0x55` acknowledgement.
+3. **Waits** roughly as long as the capture should take, then does a small
+   **sync handshake** (`0x5A` → `0xA5`) to confirm the data is ready.
+4. **Streams the raw buffer back** in chunks until all samples are received.
+
+The whole exchange is retried (up to 6 attempts) if any step fails, so a flaky
+cable or a mistimed capture recovers gracefully.
+
+### On the host (encode)
+
+```
+raw buffer ──▶ decode per-channel bits ──▶ FST file ──▶ GTKWave
+             (unpack samples)            (fstapi)      (view)
+```
+
+Only **after** the raw buffer arrives does the host encode it into an **FST file**
+using **`fstapi`** (the FST writer library). It unpacks each sample into
+per-channel bit changes and writes the timescale from the real (effective) sample
+rate. GTKWave then opens the result.
+
+> **Why encode on the host?** The Pico's RAM is small and its CPU is busy sampling —
+> keeping it to raw capture and moving all the FST work to the host keeps captures
+> fast and the firmware simple.
 
 ---
 
@@ -358,13 +399,13 @@ effective_hz = best_sys_clk / pio_div    // the REAL rate you get
 ```
 calculate_best_pll(137 MHz):
   searches PLL settings, no exact 137 MHz clock exists
-  closest buildable: clk_sys = 137.143 MHz  (fbdiv/post-dividers chosen)
+  closest buildable: clk_sys = 136,800 MHz  (fbdiv/post-dividers chosen)
   pio_div = 1
-  effective_hz = 137.143 MHz          → 143 kHz above what you asked
+  effective_hz = 136,800 MHz          → 200 kHz below what you asked
 ```
 
-So you typed **137 MHz**, the analyzer actually samples at **137.143 MHz** — off by
-~0.1%. The samples are still evenly spaced (integer divider), and the host uses this
+So you typed **137 MHz**, the analyzer actually samples at **136.800 MHz** — off by
+~0.15%. The samples are still evenly spaced (integer divider), and the host uses this
 *effective* rate for the FST timescale, so the waveform timing stays correct — the
 rate is just not the exact number you typed.
 
@@ -372,9 +413,9 @@ rate is just not the exact number you typed.
 
 | You request | You actually get (clk_sys = effective_hz) | Error   |
 | :---------: | :---------------------------------------: | :-----: |
-| 137 MHz     | 137.143 MHz                               | +0.10%  |
+| 137 MHz     | 136.800 MHz                               | +0.15%  |
 | 143 MHz     | 142.800 MHz                               | −0.14%  |
-| 167 MHz     | 166.667 MHz                               | −0.20%  |
+| 167 MHz     | 166.500 MHz                               | −0.30%  |
 | 179 MHz     | 178.500 MHz                               | −0.28%  |
 
 The nudge is tiny (a fraction of a percent) and only shows up for "awkward"
@@ -413,10 +454,7 @@ gtkwave capture.fst
 3. Select the pins you want and click **Append** (or drag them into **Waves**).
 4. Scroll / use the zoom buttons to navigate.
 
-<!-- ─────────────────────────────────────────────────────────────
-     TODO: screenshot of the SST panel with signals loaded
-─────────────────────────────────────────────────────────────── -->
-`[ screenshot: signal selection panel — gtkwave-signals.png ]`
+![ screenshot: signal selection panel — gtkwave-signals.png ](docs/capture.png)
 
 ### Measuring frequency & duty cycle
 
@@ -427,10 +465,7 @@ gtkwave capture.fst
 
 For duty cycle, measure the HIGH width separately and divide by the full period.
 
-<!-- ─────────────────────────────────────────────────────────────
-     TODO: screenshot with two markers measuring one period
-─────────────────────────────────────────────────────────────── -->
-`[ screenshot: measuring a period with markers — gtkwave-measure.png ]`
+![ screenshot: measuring a period with markers — gtkwave-measure.png ](docs/marker.png)
 
 > **Note:** when zoomed far out, GTKWave may render pulses with pixel artifacts
 > that look like width "jitter." That is a drawing artifact, not real jitter —
@@ -461,7 +496,7 @@ real jitter looks like and how to avoid it.
 <summary><b>Awkward frequencies get nudged slightly</b></summary>
 
 If you request an in-between rate the PLL can't hit exactly (e.g. 137 MHz), the
-analyzer samples at the closest achievable rate instead (137.143 MHz). The timing
+analyzer samples at the closest achievable rate instead (136.800 MHz). The timing
 stays correct — it's just not the exact number you typed. Stick to rates that are a
 multiple of your signal × 4 and you won't notice this. See
 [Case C](#case-c--no-exact-clock-exists-so-the-rate-is-nudged-).

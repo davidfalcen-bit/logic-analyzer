@@ -45,6 +45,7 @@ bool rp_link::find_available_port() {
                 continue;
             struct termios tty{};
             if (tcgetattr(fd_, &tty) != 0) {
+                tcflush(fd_, TCIOFLUSH);
                 close(fd_);
                 fd_ = -1;
                 continue;
@@ -53,6 +54,7 @@ bool rp_link::find_available_port() {
             tty.c_cc[VMIN] = 0;
             tty.c_cc[VTIME] = 5;
             if (tcsetattr(fd_, TCSANOW, &tty) != 0) {
+                tcflush(fd_, TCIOFLUSH);
                 close(fd_);
                 fd_ = -1;
                 continue;
@@ -60,6 +62,7 @@ bool rp_link::find_available_port() {
             tcflush(fd_, TCIFLUSH);
             uint8_t ping = 0x05;
             if (write(fd_, &ping, 1) != 1) {
+                tcflush(fd_, TCIOFLUSH);
                 close(fd_);
                 fd_ = -1;
                 continue;
@@ -71,15 +74,18 @@ bool rp_link::find_available_port() {
                     closedir(dir);
                     return true;
                 } else {
+                    tcflush(fd_, TCIOFLUSH);
                     close(fd_);
                     fd_ = -1;
                     continue;
                 }
             } else {
+                tcflush(fd_, TCIOFLUSH);
                 close(fd_);
                 fd_ = -1;
                 continue;
             }
+            tcflush(fd_, TCIOFLUSH);
             close(fd_);
             fd_ = -1;
             continue;
