@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -63,7 +64,6 @@ bool rp_link::find_available_port() {
                 fd_ = -1;
                 continue;
             }
-            tcdrain(fd_);
             uint8_t pong{};
             bytes_read = read(fd_, &pong, 1);
             if (bytes_read > 0) {

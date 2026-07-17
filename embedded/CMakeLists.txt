@@ -10,7 +10,7 @@ target_compile_features(logic_analyzer PRIVATE "cxx_std_${CMAKE_CXX_STANDARD}")
 
 target_compile_options(logic_analyzer PRIVATE -Wall -Wextra -Wshadow -Wnull-dereference -pedantic)
 
-target_compile_options(logic_analyzer PRIVATE $<$<CONFIG:Debug>:-Og -ggdb3> $<$<CONFIG:Release>:-O2>)
+target_compile_options(logic_analyzer PRIVATE $<$<CONFIG:Debug>:-Og -ggdb3> $<$<CONFIG:Release>:-O3>)
 
 pico_enable_stdio_usb(logic_analyzer 1)
 pico_enable_stdio_uart(logic_analyzer 0)
