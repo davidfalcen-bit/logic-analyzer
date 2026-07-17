@@ -12,6 +12,9 @@ signals up to 200 MHz and exports them to GTKWave.**
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](https://opensource.org/license/mit)
 
 ![Logic Analyzer capture in GTKWave](docs/hero.gif)
+
+</div> 
+
 ---
 
 ## ✨ Features
