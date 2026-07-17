@@ -1,12 +1,16 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <format>
-struct logic_an_input {
+
+struct alignas(4) logic_an_input {
+    uint16_t msg;
+    uint8_t amm;
     uint8_t channel;
-    uint32_t hz;
     uint32_t samples;
+    uint32_t hz;
 };
 
 inline std::string from_hz_to_string(unsigned int hz) {
@@ -29,7 +33,7 @@ enum class capturing : std::uint8_t {
 struct status_conf {
     bool dev_con;
     capturing cap_status_;
-    std::string_view name_of_file = "capture.vcd";
+    std::string_view name_of_file = "capture.fst";
     [[nodiscard]] std::string_view cap_status() const {
         switch (cap_status_) {
         case capturing::IDLE:
@@ -45,3 +49,13 @@ struct status_conf {
         }
     }
 };
+
+namespace ping {
+static constexpr uint8_t PING_HANDSHAKE = 0x05;
+static constexpr uint8_t PONG_HANDSHAKE = 0x06;
+static constexpr uint8_t SIGN_OF_STRUCT = 0x06;
+static constexpr uint8_t READY_CONFIG = 0x55;
+static constexpr uint8_t PING_SAMPLING = 0x5A;
+static constexpr uint8_t PONG_SAMPLING = 0xA5;
+static constexpr uint8_t PING_SEND_SAMPLING = 0x5B;
+} // namespace ping

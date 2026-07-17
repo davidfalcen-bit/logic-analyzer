@@ -1,8 +1,8 @@
 add_executable(logic_analyzer
     src/main.cpp
     src/sampler.cpp
-    src/parser.cpp
 )
+pico_generate_pio_header(logic_analyzer ${CMAKE_CURRENT_SOURCE_DIR}/src/read_pin.pio)
 
 target_include_directories(logic_analyzer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -10,7 +10,7 @@ target_compile_features(logic_analyzer PRIVATE "cxx_std_${CMAKE_CXX_STANDARD}")
 
 target_compile_options(logic_analyzer PRIVATE -Wall -Wextra -Wshadow -Wnull-dereference -pedantic)
 
-target_compile_options(logic_analyzer PRIVATE $<$<CONFIG:Debug>:-Og -ggdb3> $<$<CONFIG:Release>:-O2>)
+target_compile_options(logic_analyzer PRIVATE $<$<CONFIG:Debug>:-Og -ggdb3> $<$<CONFIG:Release>:-O3>)
 
 pico_enable_stdio_usb(logic_analyzer 1)
 pico_enable_stdio_uart(logic_analyzer 0)
@@ -19,6 +19,9 @@ pico_enable_stdio_uart(logic_analyzer 0)
 target_link_libraries(logic_analyzer  
                             pico_stdlib 
                             hardware_pwm
+                            hardware_pll
+                            hardware_pio
+                            hardware_dma
                             )
 
 pico_add_extra_outputs(logic_analyzer)

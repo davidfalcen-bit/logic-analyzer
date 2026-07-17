@@ -24,15 +24,15 @@ ftxui::Element make_layout(const logic_an_input &input, const status_conf &statu
                            std::string_view error_input) {
     auto left_content = ftxui::vbox({
         ftxui::hbox({
-            ftxui::text("Channel [0-28]: "),
+            ftxui::text("Channel(s) [0-28] (15 or 15+3→15-18): "),
             channel_input->Render(),
         }),
         ftxui::hbox({
-            ftxui::text("Frequency [1 Hz-100 MHz]: "),
+            ftxui::text("Frequency [1 Hz-200 MHz]: "),
             freq_input->Render(),
         }),
         ftxui::hbox({
-            ftxui::text("Samples [1-1,000,000]: "),
+            ftxui::text("Samples [1-200,000]: "),
             sample_input->Render(),
         }),
     });

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <fcntl.h>
 #include <thread>
 #include <unistd.h>
@@ -19,6 +20,7 @@
 #include "elements_of_ui.hpp"
 #include "parser.hpp"
 #include "pico_connect.hpp"
+#include "fst_parser.hpp"
 
 static ftxui::InputOption make_input_options() {
     ftxui::InputOption options;
@@ -42,11 +44,11 @@ int main() {
     std::jthread capture_thread;
     int selected_input = 0;
     std::locale::global(std::locale("en_US.UTF-8"));
-    logic_an_input inpt{.channel = 3, .hz = 1'000'000, .samples = 10000};
-    std::string channel_placeholder;
-    std::string frequency_placeholder;
-    std::string samples_placeholder;
-    std::string output{"capture.vcd"};
+    logic_an_input inpt{.msg = 6, .amm = 0, .channel = 15, .samples = 10000, .hz = 1'000'000};
+    std::string channel_placeholder{};
+    std::string frequency_placeholder{};
+    std::string samples_placeholder{};
+    std::string output{"capture.fst"};
     std::string_view error_message{};
 
     auto channel_opt = make_input_options();
@@ -58,7 +60,7 @@ int main() {
 
     auto output_opt = make_input_options();
     output_opt.on_enter = [&] {
-        if (confirm_vcd(output, error_message))
+        if (confirm_fst(output, error_message))
             selected_input = 3;
     };
     auto output_inp = ftxui::Input(&output, "", output_opt);
@@ -88,20 +90,23 @@ int main() {
     auto screen = ftxui::ScreenInteractive::TerminalOutput();
     auto exit = screen.ExitLoopClosure();
     auto app = ftxui::CatchEvent(renderer, [&](ftxui::Event ev) {
-        if(ev == ftxui::Event::Special("Capture success")){
+        if (ev == ftxui::Event::Special("Capture success")) {
             stats.cap_status_ = capturing::DONE;
             error_message = "";
             still_capturing = false;
+            auto result_of_parsing = rpl.getter();
+            if (result_of_parsing)
+                fst_parse(result_of_parsing.value(), inpt, output);
             return true;
         }
-        if(ev == ftxui::Event::Special("Capture unsuccess")){
+        if (ev == ftxui::Event::Special("Capture unsuccess")) {
             stats.cap_status_ = capturing::IDLE;
-            error_message = "CAPTURING: Capturing was unsuccessful, remove device, and try again/";
+            error_message = "CAPTURING: Capturing was unsuccessful, remove device, and try again.";
             still_capturing = false;
             stats.dev_con = false;
             return true;
         }
-        
+
         if (still_capturing) {
             return true;
         }
@@ -109,20 +114,22 @@ int main() {
             exit();
             return true;
         } else if (ev == ftxui::Event::CtrlR) {
-            if (prepare_capture(channel_placeholder, frequency_placeholder, samples_placeholder, output, error_message, inpt)) {
+            if (prepare_capture(channel_placeholder, frequency_placeholder, samples_placeholder, output, error_message,
+                                inpt)) {
                 if (rpl.is_alive() || rpl.find_available_port()) {
                     stats.cap_status_ = capturing::CAPTURING;
                     stats.dev_con = true;
                     still_capturing = true;
-                    capture_thread = std::jthread([&rpl, &screen, inpt]{
+                    capture_thread = std::jthread([&rpl, &screen, inpt] {
                         const bool suc = rpl.capture_data(inpt);
-                        if(suc)screen.PostEvent(ftxui::Event::Special("Capture success"));
-                        else screen.PostEvent(ftxui::Event::Special("Capture unsuccess"));
-                    });   
-                } 
-                else {
+                        if (suc)
+                            screen.PostEvent(ftxui::Event::Special("Capture success"));
+                        else
+                            screen.PostEvent(ftxui::Event::Special("Capture unsuccess"));
+                    });
+                } else {
                     stats.dev_con = false;
-                    error_message = "DEVICE: Device with needed code isn't connected";        
+                    error_message = "DEVICE: Device with needed code isn't connected";
                 }
             }
             return true;

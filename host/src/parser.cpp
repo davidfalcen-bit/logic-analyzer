@@ -1,9 +1,11 @@
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include "parser.hpp"
 #include "iostream"
-#include <array>
 #include <cctype>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <span>
@@ -32,6 +34,47 @@ bool getline(std::span<char> buffer) {
     return false;
 }
 } // namespace aur
+
+
+
+static uint32_t hz_calib(uint32_t freq) {
+    uint32_t best_sys_freq = 200'000'000;
+    uint32_t min_diff = -1;
+    uint32_t max_pio_div = 200'000'000 / freq;
+    if (max_pio_div == 0)
+        max_pio_div = 1;
+    for (uint32_t pio_div = 1; pio_div <= max_pio_div; ++pio_div) {
+        for (uint32_t p1 = 1; p1 <= 7; ++p1) {
+            for (uint32_t p2 = 1; p2 <= p1; ++p2) {
+                uint64_t target_vco = static_cast<uint64_t>(freq) * pio_div * p1 * p2;
+                uint32_t fbdiv = (target_vco + 6'000'000) / 12'000'000;
+                if (fbdiv < 16 || fbdiv > 320)
+                    continue;
+                uint64_t vco = 12'000'000ULL * fbdiv;
+                if (vco < 400'000'000 || vco > 1'600'000'000)
+                    continue;
+                if (vco % (p1 * p2) != 0) continue; 
+                uint32_t real_sys_freq = vco / (p1 * p2);
+                uint32_t real_sample_hz = real_sys_freq / pio_div;
+                uint32_t diff{};
+                if (real_sample_hz > freq) {
+                    diff = real_sample_hz - freq;
+                } else {
+                    diff = freq - real_sample_hz;
+                }
+
+                if (diff < min_diff) {
+                    min_diff = diff;
+                    best_sys_freq = real_sys_freq;
+                    if (diff == 0) {
+                        return best_sys_freq;
+                    }
+                }
+            }
+        }
+    }
+    return best_sys_freq;
+}
 
 static uint32_t from_string_to_hz(std::string_view input, std::string_view &error) {
     double digit{};
@@ -73,98 +116,86 @@ static uint32_t from_string_to_hz(std::string_view input, std::string_view &erro
     return 0;
 }
 
-logic_an_input parse_cin() {
-    state_of_parse st = state_of_parse::PARSING_CHANNEL;
-    std::string_view input;
-    std::array<char, 16> buffer{};
-    logic_an_input result{};
-    while (true) {
-        switch (st) {
-        case state_of_parse::PARSING_CHANNEL: {
-            std::cout << "What channel do you want to use?\r\n";
-            if (!aur::getline(buffer)) {
-                std::cout << "Your input is wrong, try again\r\n";
-                break;
-            }
-            input = std::string_view{buffer.data()};
-            auto [ptr, error] = std::from_chars(input.begin(), input.end(), result.channel);
-            if (error == std::errc() && ptr == input.end()) {
-                if (result.channel > 28) {
-                    std::cout << "Channels are from 0 to 28. Try again please.\r\n";
-                    continue;
-                }
-                st = state_of_parse::PARSING_HZ;
-                break;
-            }
-            std::cout << "Your input is wrong, try again\r\n";
-            break;
-        }
-        case state_of_parse::PARSING_HZ:
-            std::cout << "Enter the sampling frequency.\r\n"
-                      << "Format: <number> <unit>\r\n"
-                      << "Supported units: Hz, kHz, MHz\r\n"
-                      << "Examples: 100 Hz, 13 khz, 20MHz\r\n"
-                      << "Allowed hz from 1Hz to 200MHz\r\n";
-            if (!aur::getline(buffer)) {
-                std::cout << "Your input is wrong, try again\r\n";
-                break;
-            }
-            input = std::string_view{buffer.data()};
-            result.hz = from_string_to_hz(input, input);
-            if (result.hz == 0) {
-                std::cout << "Your input contains an error.\r\nIt can be not correct sufix or to big num, please try "
-                             "again\r\n";
-                continue;
-            }
-            st = state_of_parse::PARSING_SAMPLES;
-            break;
-        case state_of_parse::PARSING_SAMPLES:
-            std::cout << "How much samples do you want to use?\r\nMaximum is: 1'000'000\r\n";
-            if (!aur::getline(buffer)) {
-                std::cout << "Your input is wrong, try again\r\n";
-                break;
-            }
-            input = std::string_view{buffer.data()};
-            auto [ptr, error] = std::from_chars(input.begin(), input.end(), result.samples);
-            if (error == std::errc() && ptr == input.end()) {
-                if (result.samples == 0 || result.samples > 1000000) {
-                    std::cout << "Your input contains an error.\r\nIt can not be a negative or zero\r\n";
-                    continue;
-                }
-                return result;
-            }
-            std::cout << "Your input is wrong, try again\r\n";
-            break;
-        }
-        if (std::cin.eof()) {
-            std::cout << "You pressed unavaliable key-bind for this CLI, by default we use channel 15, Freq: 100 Mhz, "
-                         "and 100,000 samples, sorry for inconvient behaviour\r\n";
-            result = {.channel = 15, .hz = 100000000, .samples = 100000};
-            return result;
-        }
+static bool handling_char_conv(std::string_view line, uint8_t &digit, std::string_view &error_msg) {
+    auto [ptr, er] = std::from_chars(line.data(), line.data() + line.size(), digit);
+    if (ptr == line.data() + line.size() && er == std::errc()) {
+        return true;
+    } else {
+        error_msg = "CHANNEL: Your input contains incorrect symbols";
+        return false;
     }
 }
 
 bool confirm_channel(std::string_view line, logic_an_input &input, std::string_view &error_message) {
-    auto [ptr, er] = std::from_chars(line.begin(), line.end(), input.channel);
-    if (ptr == line.end() && er == std::errc()) {
-        if (input.channel > 28) {
-            error_message = "CHANNEL: Your input isn't in range";
-            input.channel = 29;
+    if (line.empty()) {
+        error_message = "CHANNEL: Your input is empty";
+        return false;
+    }
+    std::size_t chin = line.find_first_not_of(' ');
+    if (chin == std::string_view::npos) {
+        error_message = "CHANNEL: Your input is empty";
+        return false;
+    }
+    line.remove_prefix(chin);
+    chin = line.find_last_not_of(' ');
+    line.remove_suffix(line.size() - chin - 1);
+    chin = line.find('+');
+    auto temp_str = line;
+    if (chin != std::string_view::npos) {
+        temp_str = line.substr(0, chin);
+    }
+    if (!handling_char_conv(temp_str, input.channel, error_message))
+        return false;
+    if (input.channel > 28) {
+        error_message = "CHANNEL: Out of range, range[0-28]";
+        return false;
+    }
+    if (input.channel > 22 && input.channel < 26) {
+        error_message =
+            "CHANNEL: Logic anayzer doesn't support 23-25 gpio pins, if you want you can comment this in parser.cpp";
+        return false;
+    }
+    if (chin == std::string_view::npos) {
+        error_message = "";
+        input.amm = 0;
+        return true;
+    }
+    temp_str = line.substr(chin + 1);
+    if (temp_str.empty()) {
+        error_message = "CHANNEL: Missing amount after '+'";
+        return false;
+    }
+    if (!handling_char_conv(temp_str, input.amm, error_message))
+        return false;
+    if (input.amm > 7) {
+        error_message = "CHANNEL: Channel Range exceeds limits of channels";
+        return false;
+    }
+    if ((input.channel + input.amm) > 28) {
+        error_message = "CHANNEL: Channel Range overflowed 28 channels";
+        return false;
+    }
+    for (uint8_t i{}; i <= input.amm; i++) {
+        if (auto temp = input.channel + i; temp >= 23 && temp <= 25) {
+            error_message = "CHANNEL: Logic anayzer doesn't support 23-25 gpio pins, if you want you can comment this "
+                            "in parser.cpp";
             return false;
         }
-        error_message = "";
-        return true;
-    } else {
-        error_message = "CHANNEL: Your input contains incorrect symbols";
-        input.channel = 29;
     }
-    return false;
+    error_message = "";
+    return true;
 }
+
 
 bool confirm_freq(std::string_view line, logic_an_input &input, std::string_view &error_message) {
     input.hz = from_string_to_hz(line, error_message);
     if (input.hz != 0) {
+        if (200'000'000 % input.hz != 0 && input.hz >= 2'000'000 ) {
+            auto sys_clk = hz_calib(input.hz);
+            auto div = sys_clk / input.hz;
+            if (div == 0) div = 1;
+            input.hz = sys_clk/div;
+        }
         error_message = "";
         return true;
     }
@@ -177,7 +208,7 @@ bool confirm_samples(std::string_view line, logic_an_input &input, std::string_v
     line = temp_line;
     auto [ptr, er] = std::from_chars(line.begin(), line.end(), input.samples);
     if (ptr == line.end() && er == std::errc()) {
-        if (input.samples > 1'000'000) {
+        if (input.samples > 200'000) {
             error_message = "SAMPLES: Your input isn't in range";
             input.samples = 0;
             return false;
@@ -191,7 +222,7 @@ bool confirm_samples(std::string_view line, logic_an_input &input, std::string_v
     return false;
 }
 
-bool confirm_vcd(std::string_view line, std::string_view &error_message) {
+bool confirm_fst(std::string_view line, std::string_view &error_message) {
     if (line.size() > 255) {
         error_message = "OUTPUT: Too long name for file";
         return false;
@@ -204,8 +235,8 @@ bool confirm_vcd(std::string_view line, std::string_view &error_message) {
             return false;
         }
     }
-    if (!line.ends_with(".vcd")) {
-        error_message = "OUTPUT: File name doesnt end with .vcd";
+    if (!line.ends_with(".fst")) {
+        error_message = "OUTPUT: File name doesnt end with .fst";
         return false;
     }
     error_message = "";
@@ -221,7 +252,7 @@ bool prepare_capture(std::string_view channel_placeholder, std::string_view freq
         return false;
     } else if (!confirm_samples(samples_placeholder, input, error)) {
         return false;
-    } else if (!confirm_vcd(output, error)) {
+    } else if (!confirm_fst(output, error)) {
         return false;
     }
     return true;
