@@ -35,8 +35,6 @@ bool getline(std::span<char> buffer) {
 }
 } // namespace aur
 
-
-
 static uint32_t hz_calib(uint32_t freq) {
     uint32_t best_sys_freq = 200'000'000;
     uint32_t min_diff = -1;
@@ -53,7 +51,8 @@ static uint32_t hz_calib(uint32_t freq) {
                 uint64_t vco = 12'000'000ULL * fbdiv;
                 if (vco < 400'000'000 || vco > 1'600'000'000)
                     continue;
-                if (vco % (p1 * p2) != 0) continue; 
+                if (vco % (p1 * p2) != 0)
+                    continue;
                 uint32_t real_sys_freq = vco / (p1 * p2);
                 uint32_t real_sample_hz = real_sys_freq / pio_div;
                 uint32_t diff{};
@@ -186,15 +185,15 @@ bool confirm_channel(std::string_view line, logic_an_input &input, std::string_v
     return true;
 }
 
-
 bool confirm_freq(std::string_view line, logic_an_input &input, std::string_view &error_message) {
     input.hz = from_string_to_hz(line, error_message);
     if (input.hz != 0) {
-        if (200'000'000 % input.hz != 0 && input.hz >= 2'000'000 ) {
+        if (200'000'000 % input.hz != 0 && input.hz >= 2'000'000) {
             auto sys_clk = hz_calib(input.hz);
             auto div = sys_clk / input.hz;
-            if (div == 0) div = 1;
-            input.hz = sys_clk/div;
+            if (div == 0)
+                div = 1;
+            input.hz = sys_clk / div;
         }
         error_message = "";
         return true;
@@ -246,6 +245,10 @@ bool confirm_fst(std::string_view line, std::string_view &error_message) {
 bool prepare_capture(std::string_view channel_placeholder, std::string_view frequency_placeholder,
                      std::string_view samples_placeholder, std::string_view output, std::string_view &error,
                      logic_an_input &input) {
+    if (error == "WARNING: Capture time exceeds 10s. Press Ctrl+R again to confirm.") {
+        error = "";
+        return true;
+    }
     if (!confirm_channel(channel_placeholder, input, error)) {
         return false;
     } else if (!confirm_freq(frequency_placeholder, input, error)) {
@@ -253,6 +256,10 @@ bool prepare_capture(std::string_view channel_placeholder, std::string_view freq
     } else if (!confirm_samples(samples_placeholder, input, error)) {
         return false;
     } else if (!confirm_fst(output, error)) {
+        return false;
+    }
+    if ((((1.0F / static_cast<float>(input.hz)) * static_cast<float>(input.samples)) > 10) ) {
+        error = "WARNING: Capture time exceeds 10s. Press Ctrl+R again to confirm.";
         return false;
     }
     return true;

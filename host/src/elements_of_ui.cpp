@@ -2,6 +2,7 @@
 #include <ftxui/component/app.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <ftxui/screen/terminal.hpp>
 #include <string>
 #include <string_view>
 #include "elements_of_ui.hpp"
@@ -68,7 +69,12 @@ ftxui::Element make_layout(const logic_an_input &input, const status_conf &statu
 
     auto error_content = ftxui::text(error_input);
     error_content = make_central(error_content);
-    error_content |= ftxui::color(ftxui::Color::Red);
+    if (error_input.starts_with("WARNING")) {
+        error_content |= ftxui::color(ftxui::Color::Yellow);
+    }
+    else {
+        error_content |= ftxui::color(ftxui::Color::Red);
+    }
     auto error_box =
         ftxui::vbox({ftxui::center(ftxui::bold(ftxui::text("Errors"))), ftxui::separatorDashed(), error_content});
     error_box = sizing(error_box, 30, 1);

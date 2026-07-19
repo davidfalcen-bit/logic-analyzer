@@ -61,7 +61,8 @@ uint32_t calculate_best_pll(uint32_t target_sample_hz) {
                 uint64_t vco = 12'000'000ULL * fbdiv;
                 if (vco < 400'000'000 || vco > 1'600'000'000)
                     continue;
-                if (vco % (p1 * p2) != 0) continue; 
+                if (vco % (p1 * p2) != 0)
+                    continue;
                 uint32_t real_sys_freq = vco / (p1 * p2);
                 uint32_t real_sample_hz = real_sys_freq / pio_div;
                 uint32_t diff{};
@@ -101,9 +102,12 @@ void Sampler::init(const logic_an_input inpt) {
     pio = initalize_sm(inpt.channel, inpt_for_sampling.hz, slow_mode);
 }
 
- void Sampler::start_sampling() {
-     irq_set_enabled(USBCTRL_IRQ, false); 
-     bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_DMA_R_BITS | BUSCTRL_BUS_PRIORITY_DMA_W_BITS;
+void Sampler::start_sampling() {
+    float expected_time_sec = (float)inpt_for_sampling.samples / (float)inpt_for_sampling.hz;
+    if (expected_time_sec < 5.0) {
+        irq_set_enabled(USBCTRL_IRQ, false);
+    }
+    bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_DMA_R_BITS | BUSCTRL_BUS_PRIORITY_DMA_W_BITS;
 
     uint8_t dma_chan = dma_claim_unused_channel(true);
     auto conf = dma_channel_get_default_config(dma_chan);
@@ -112,8 +116,7 @@ void Sampler::init(const logic_an_input inpt) {
     channel_config_set_write_increment(&conf, true);
     channel_config_set_dreq(&conf, pio_get_dreq(pio.pio, pio.sm, false));
     // dma_channel_set_irq0_enabled(dma_chan, true);
-    dma_channel_configure(dma_chan, &conf, &samples_, &pio.pio->rxf[pio.sm],
-                           inpt_for_sampling.samples, true);
+    dma_channel_configure(dma_chan, &conf, &samples_, &pio.pio->rxf[pio.sm], inpt_for_sampling.samples, true);
     pio_sm_set_enabled(pio.pio, pio.sm, true);
 
     // absolute_time_t t0 = get_absolute_time();
@@ -126,7 +129,9 @@ void Sampler::init(const logic_an_input inpt) {
     dma_channel_unclaim(dma_chan);
     pio_sm_set_enabled(pio.pio, pio.sm, false);
     still_measuring = false;
-    irq_set_enabled(USBCTRL_IRQ, true); 
+    if (expected_time_sec < 5.0) {
+        irq_set_enabled(USBCTRL_IRQ, true);
+    }
 }
 
 [[nodiscard]] std::optional<std::span<const std::uint8_t>> Sampler::samples() const {

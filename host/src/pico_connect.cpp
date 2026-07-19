@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -139,8 +140,9 @@ bool rp_link::capture_data(const logic_an_input &config) {
     buffer_.resize(config.samples);
     const std::uint8_t MAX_ATTEMPTS = 6;
     std::uint8_t attempts = 0;
-
+    std::fstream debug{"debug.log"};
     while (attempts < MAX_ATTEMPTS) {
+        debug << "WE AT THE START OF WHILE\n";
         tcflush(fd_, TCIOFLUSH);
 
         if (write(fd_, &config, sizeof(config)) != sizeof(config)) {
@@ -155,7 +157,7 @@ bool rp_link::capture_data(const logic_an_input &config) {
             continue;
         }
 
-        uint32_t sleep_ms = static_cast<uint32_t>(std::round((double(config.samples) / config.hz) * 1250.0));
+        auto sleep_ms = static_cast<uint32_t>(std::round((double(config.samples) / config.hz) * 1250.0));
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
 
         bool error_of_reading{};
@@ -187,7 +189,7 @@ bool rp_link::capture_data(const logic_an_input &config) {
         }
         std::size_t total_received = 0;
         bool chunk_error = false;
-
+        debug << "AND HERE BEFORE RECIEVING";
         while (total_received < config.samples) {
             ssize_t chunk_read = read(fd_, buffer_.data() + total_received, config.samples - total_received);
 
